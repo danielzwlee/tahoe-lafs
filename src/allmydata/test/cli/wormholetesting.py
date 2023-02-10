@@ -23,7 +23,6 @@ For example::
     # Run peerA against local_peerB with pure in-memory message passing.
     server, helper = memory_server()
     run(gather(peerA(server), local_peerB(helper, server)))
-
     # Run peerA against a peerB somewhere out in the world, using a real
     # wormhole relay server somewhere.
     import wormhole
@@ -32,9 +31,8 @@ For example::
 
 from __future__ import annotations
 
-from typing import Iterator, Optional, List, Tuple
-from collections.abc import Awaitable
-from inspect import getargspec
+from typing import Iterator, Optional, List, Tuple, Any, TextIO
+from inspect import getfullargspec
 from itertools import count
 from sys import stderr
 
@@ -54,10 +52,8 @@ ApplicationKey = Tuple[RelayURL, AppId]
 class MemoryWormholeServer(object):
     """
     A factory for in-memory wormholes.
-
     :ivar _apps: Wormhole state arranged by the application id and relay URL
         it belongs to.
-
     :ivar _waiters: Observers waiting for a wormhole to be created for a
         specific application id and relay URL combination.
     """
@@ -66,18 +62,18 @@ class MemoryWormholeServer(object):
 
     def create(
         self,
-        appid,
-        relay_url,
-        reactor,
-        versions={},
-        delegate=None,
-        journal=None,
-        tor=None,
-        timing=None,
-        stderr=stderr,
-        _eventual_queue=None,
-        _enable_dilate=False,
-    ):
+        appid: str,
+        relay_url: str,
+        reactor: Any,
+        versions: Any={},
+        delegate: Optional[Any]=None,
+        journal: Optional[Any]=None,
+        tor: Optional[Any]=None,
+        timing: Optional[Any]=None,
+        stderr: TextIO=stderr,
+        _eventual_queue: Optional[Any]=None,
+        _enable_dilate: bool=False,
+    )-> _MemoryWormhole:
         """
         Create a wormhole.  It will be able to connect to other wormholes created
         by this instance (and constrained by the normal appid/relay_url
@@ -116,36 +112,40 @@ class TestingHelper(object):
     async def wait_for_wormhole(self, appid: AppId, relay_url: RelayURL) -> IWormhole:
         """
         Wait for a wormhole to appear at a specific location.
-
         :param appid: The appid that the resulting wormhole will have.
-
         :param relay_url: The URL of the relay at which the resulting wormhole
             will presume to be created.
-
         :return: The first wormhole to be created which matches the given
             parameters.
         """
         key = (relay_url, appid)
         if key in self._server._waiters:
             raise ValueError(f"There is already a waiter for {key}")
-        d = Deferred()
+        d: Deferred[_MemoryWormhole] = Deferred()
         self._server._waiters[key] = d
         wormhole = await d
         return wormhole
 
 
-def _verify():
+def _verify()-> None:
     """
     Roughly confirm that the in-memory wormhole creation function matches the
     interface of the real implementation.
     """
     # Poor man's interface verification.
+    # Upgrade to getfullargspec since getargspec deprecated since python 3.5
+    a = getfullargspec(create)
+    b = getfullargspec(MemoryWormholeServer.create)
 
-    a = getargspec(create)
-    b = getargspec(MemoryWormholeServer.create)
     # I know it has a `self` argument at the beginning.  That's okay.
     b = b._replace(args=b.args[1:])
-    assert a == b, "{} != {}".format(a, b)
+
+    # getfullargspec returns more information than getargspec.
+    # Just compare the same information to check function signature
+    assert a.varkw == b.varkw
+    assert a.args == b.args
+    assert a.varargs == b.varargs
+    assert a.defaults == b.defaults
 
 
 _verify()
@@ -164,10 +164,8 @@ class _WormholeApp(object):
     def allocate_code(self, wormhole: IWormhole, code: Optional[WormholeCode]) -> WormholeCode:
         """
         Allocate a new code for the given wormhole.
-
         This also associates the given wormhole with the code for future
         lookup.
-
         Code generation logic is trivial and certainly not good enough for any
         real use.  It is sufficient for automated testing, though.
         """
@@ -184,13 +182,13 @@ class _WormholeApp(object):
 
         return code
 
-    def wait_for_wormhole(self, code: WormholeCode) -> Awaitable[_MemoryWormhole]:
+    def wait_for_wormhole(self, code: WormholeCode) -> Deferred[_MemoryWormhole]:
         """
         Return a ``Deferred`` which fires with the next wormhole to be associated
         with the given code.  This is used to let the first end of a wormhole
         rendezvous with the second end.
         """
-        d = Deferred()
+        d: Deferred[_MemoryWormhole] = Deferred()
         self._waiting.setdefault(code, []).append(d)
         return d
 
@@ -257,12 +255,12 @@ class _MemoryWormhole(object):
 
     def when_code(self) -> Deferred[WormholeCode]:
         if self._code is None:
-            d = Deferred()
+            d: Deferred[WormholeCode] = Deferred()
             self._waiting_for_code.append(d)
             return d
         return succeed(self._code)
 
-    def get_welcome(self):
+    def get_welcome(self)->Deferred[str]:
         return succeed("welcome")
 
     def send_message(self, payload: WormholeMessage) -> None:
@@ -276,8 +274,8 @@ class _MemoryWormhole(object):
             )
         d = self._view.wormhole_by_code(self._code, exclude=self)
 
-        def got_wormhole(wormhole):
-            msg = wormhole._payload.get()
+        def got_wormhole(wormhole: _MemoryWormhole)-> Deferred[Any]:
+            msg: Deferred[Any] = wormhole._payload.get()
             return msg
 
         d.addCallback(got_wormhole)
