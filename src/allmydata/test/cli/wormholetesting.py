@@ -294,4 +294,3 @@ def memory_server() -> tuple[MemoryWormholeServer, TestingHelper]:
     """
     server = MemoryWormholeServer()
     return server, TestingHelper(server)
-    
