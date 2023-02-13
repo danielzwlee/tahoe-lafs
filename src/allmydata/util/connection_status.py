@@ -16,11 +16,12 @@ if PY2:
 import time
 from zope.interface import implementer
 from ..interfaces import IConnectionStatus
+from typing import Optional, Any, Union
 
 @implementer(IConnectionStatus)
 class ConnectionStatus(object):
-    def __init__(self, connected, summary, non_connected_statuses,
-                 last_connection_time, last_received_time):
+    def __init__(self, connected: bool, summary: Optional[str], non_connected_statuses: dict,
+                 last_connection_time: Optional[str], last_received_time: Optional[str]) -> None:
         self.connected = connected
         self.summary = summary
         self.non_connected_statuses = non_connected_statuses
@@ -28,7 +29,7 @@ class ConnectionStatus(object):
         self.last_received_time = last_received_time
 
     @classmethod
-    def unstarted(cls):
+    def unstarted(cls: Any) -> Any:
         """
         Create a ``ConnectionStatus`` representing a connection for which no
         attempts have yet been made.
@@ -41,7 +42,7 @@ class ConnectionStatus(object):
             last_received_time=None,
         )
 
-def _hint_statuses(which, handlers, statuses):
+def _hint_statuses(which: Any, handlers: Any, statuses: str) -> dict:
     non_connected_statuses = {}
     for hint in which:
         handler = handlers.get(hint)
@@ -50,7 +51,7 @@ def _hint_statuses(which, handlers, statuses):
         non_connected_statuses["%s%s" % (hint, handler_dsc)] = dsc
     return non_connected_statuses
 
-def from_foolscap_reconnector(rc, last_received):
+def from_foolscap_reconnector(rc: Any, last_received: Any) -> Union[ConnectionStatus, Any]:
     ri = rc.getReconnectionInfo()
     # See foolscap/reconnector.py, ReconnectionInfo, for details about possible
     # states. The returned result is a native string, it seems, so convert to
